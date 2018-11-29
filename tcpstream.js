@@ -12,6 +12,7 @@ var server = net.createServer(sock => {
 		'-fps', '24',
 		'-w', '1000',
 		'-h', '680',
+		'-hf', '-vf', 
 		'-o', '-'
 	]);
 	
