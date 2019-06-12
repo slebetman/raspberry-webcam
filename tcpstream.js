@@ -10,8 +10,8 @@ var server = net.createServer(sock => {
 	var video = child_process.spawn('/usr/bin/raspivid',[
 		'-t', '0',
 		'-fps', '24',
-		'-w', '1000',
-		'-h', '680',
+		'-w', '320',
+		'-h', '240',
 		'-hf', '-vf', 
 		'-o', '-'
 	]);

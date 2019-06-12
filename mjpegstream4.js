@@ -1,64 +1,73 @@
 #! /usr/bin/env node
 
 var net = require('net');
-var piCamera = require('pi-camera-connect');
+var P2J = require('pipe2jpeg');
+var spawn = require('child_process').spawn;
 
 var BOUNDARY_STRING = '1234567890.a.very.unlikely.string.to.find.in.a.jpeg.file.0987654321';
 
 var cam = {
 	camInstance: null,
+	raspivid: null,
 	openCount: 0,
+	jpeg: null,
 	open: function () {
-		console.log('open ' + (this.openCount + 1));
+		this.openCount++;
+		console.log('open ' + (this.openCount));
 		
-		if (this.camInstance === null) {
-			// this.camInstance = new piCamera.StillCamera({
-			// 	width: 320,
-			// 	height: 240,
-			// 	rotation: piCamera.Rotation.Rotate180
-			// });
-			this.camInstance = new piCamera.StreamCamera({
-				width: 320,
-				height: 240,
-				fps: 20,
-				bitRate: 200000,
-				codec: piCamera.Codec.MJPEG,
-				rotation: piCamera.Rotation.Rotate180,
-				sensorMode: piCamera.SensorMode.Mode7
-			});
-		}
-		if (this.openCount == 0) {
-			this.openCount++;
-			console.log('starting camera');
-			return this.camInstance.startCapture()
-				.then(() => this.camInstance);
-		}
-		else {
-			this.openCount++;
-			return Promise.resolve(this.camInstance);
-		}
-	},
-	close: function () {
-		console.log('close ' + this.openCount);
-		if (this.openCount > 0) {
-			this.openCount--;
-			if (this.openCount == 0) {
-				console.log('stopping camera');
-				return this.camInstance.stopCapture();
+		return new Promise((ok,fail) => {
+			if (this.camInstance === null) {
+				this.camInstance = new P2J();
+				this.camInstance.on('jpeg', picture => {
+					if (this.jpeg == null) {
+						this.jpeg = picture;
+						ok(this.camInstance);
+					}
+					else {
+						this.jpeg = picture;
+					}
+				});
+				this.raspivid = spawn('raspivid',[
+					'--width','320',
+					'--height','240',
+					'--rotation','180',
+					'--bitrate','1000000',
+					'--framerate','20',
+					'--codec','MJPEG',
+					'--timeout','0',
+					'--brightness','65',
+					'--contrast','40',
+					'--nopreview',
+					'--output','-'
+				],{
+					stdio:['ignore','pipe','ignore']
+				});
+				
+				this.raspivid.stdout.pipe(this.camInstance);
 			}
 			else {
-				return Promise.resolve();
+				ok(this.camInstance);
 			}
+		});
+	},
+	close: function () {
+		if (this.openCount > 0) {
+			this.openCount--;
+			// if (this.openCount == 0) {
+			// 	this.raspivid.kill();
+			// 	this.raspivid = null;
+			// 	this.camInstance = null;	
+			// }
 		}
+		return Promise.resolve();
 	}
 }
 
 function stream (sock,camera) {
 	if (sock.isOpen) {
-		console.log('+');
-		console.log(camera);
-		camera.takeImage().then(image => {
-			console.log('.');
+		camera.on('jpeg', image => {
+		// let image = cam.jpeg;
+		//if (image !== null) {
 			sock.write(
 				'--' + BOUNDARY_STRING + "\r\n" +
 				"Content-type: image/jpg\r\n" +
@@ -67,11 +76,14 @@ function stream (sock,camera) {
 			sock.write("\r\n");
 			sock.write(image,
 				err => {
-					if (!err) setTimeout(() => stream(sock,camera), 50);
+					// if (!err) setTimeout(() => stream(sock), 50);
 				}
 			);
-		})
-		.catch(console.log);
+		// }
+		// else {
+		// 	setTimeout(() => stream(sock), 50);
+		// }
+		});
 	}
 }
 

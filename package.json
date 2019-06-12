@@ -10,7 +10,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "pi-camera-connect": "^0.2.0",
+    "pi-camera-connect": "*",
+    "pipe2jpeg": "^0.2.7",
     "raspberry-pi-camera-native": "0.0.0",
     "raspbian-mjpeg": "^1.0.7"
   }
