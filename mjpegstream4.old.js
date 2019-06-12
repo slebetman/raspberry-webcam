@@ -1,8 +1,8 @@
 #! /usr/bin/env node
 
-const net = require('net');
-const P2J = require('pipe2jpeg');
-const spawn = require('child_process').spawn;
+var net = require('net');
+var P2J = require('pipe2jpeg');
+var spawn = require('child_process').spawn;
 
 var BOUNDARY_STRING = '1234567890.a.very.unlikely.string.to.find.in.a.jpeg.file.0987654321';
 
@@ -17,10 +17,16 @@ var cam = {
 		
 		return new Promise((ok,fail) => {
 			if (this.camInstance === null) {
-				console.log('++');
 				this.camInstance = new P2J();
-				ok(this.camInstance);
-				
+				this.camInstance.on('jpeg', picture => {
+					if (this.jpeg == null) {
+						this.jpeg = picture;
+						ok(this.camInstance);
+					}
+					else {
+						this.jpeg = picture;
+					}
+				});
 				this.raspivid = spawn('raspivid',[
 					'--width','320',
 					'--height','240',
@@ -39,39 +45,30 @@ var cam = {
 				});
 				
 				this.raspivid.stdout.pipe(this.camInstance);
-				this.raspivid.on('error',console.error);
 			}
 			else {
 				ok(this.camInstance);
 			}
-			console.log('openCount ' + this.openCount);
 		});
 	},
 	close: function () {
-		return new Promise((ok,fail) => {
-			console.log('openCount ' + this.openCount);
-			if (this.openCount > 0) {
-				this.openCount--;
-				if (this.openCount == 0) {
-					this.raspivid.stdout.destroy();
-					this.raspivid = null;
-					this.camInstance = null;
-					ok('closed');
-				}
-				else {
-					ok('still running');
-				}
-			}
-			else {
-				ok('not running');
-			}
-		});
+		if (this.openCount > 0) {
+			this.openCount--;
+			// if (this.openCount == 0) {
+			// 	this.raspivid.kill();
+			// 	this.raspivid = null;
+			// 	this.camInstance = null;	
+			// }
+		}
+		return Promise.resolve();
 	}
 }
 
 function stream (sock,camera) {
 	if (sock.isOpen) {
-		camera.on('jpeg', function mjpegStreamer (image) {
+		camera.on('jpeg', image => {
+		// let image = cam.jpeg;
+		// if (image !== null) {
 			sock.write(
 				'--' + BOUNDARY_STRING + "\r\n" +
 				"Content-type: image/jpg\r\n" +
@@ -80,12 +77,13 @@ function stream (sock,camera) {
 			sock.write("\r\n");
 			sock.write(image,
 				err => {
-					if (err) {
-						camera.removeListener('jpeg', mjpegStreamer);
-						sock.destroy();
-					}
+					// if (!err) setTimeout(() => stream(sock), 50);
 				}
 			);
+		// }
+		// else {
+		// 	setTimeout(() => stream(sock), 50);
+		// }
 		});
 	}
 }
@@ -113,7 +111,7 @@ var server = net.createServer(sock => {
 	
 	sock.on('close', () => {
 		sock.isOpen = false;
-		cam.close().then((x)=>console.log('raspivid ' + x)).catch(console.error);
+		cam.close();
 		console.log(client + ' disconnected');
 	});
 });
