@@ -105,7 +105,7 @@ function restartStream () {
 	cam.closeAll();
 	sockIds = Object.keys(socks);
 
-	setTimeout(async function {
+	setTimeout(async function(){
 		for (let i=0; i<sockIds.length; i++) {
 			let camera = await cam.open();
 			stream(socks[sockIds[i]], camera);
