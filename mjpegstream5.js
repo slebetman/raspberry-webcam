@@ -9,8 +9,8 @@ var BOUNDARY_STRING = '1234567890.a.very.unlikely.string.to.find.in.a.jpeg.file.
 let settings = {
 	width: '320',
 	height: '240',
-	bitrate: '500000',
-	framerate: '10',
+	bitrate: '1000000',
+	framerate: '20',
 	brightness: '60',
 	contrast: '25'
 }
@@ -90,22 +90,27 @@ var cam = {
 }
 
 function stream (sock,camera) {
+	let transmitting = false;
 	if (sock.isOpen) {
 		camera.on('jpeg', function mjpegStreamer (image) {
-			sock.write(
-				'--' + BOUNDARY_STRING + "\r\n" +
-				"Content-type: image/jpg\r\n" +
-				"Content-length: " + image.length + "\r\n" 
-			);
-			sock.write("\r\n");
-			sock.write(image,
-				err => {
-					if (err) {
-						camera.removeListener('jpeg', mjpegStreamer);
-						sock.destroy();
+			if (!transmitting) {
+				transmitting = true;
+				sock.write(
+					'--' + BOUNDARY_STRING + "\r\n" +
+					"Content-type: image/jpg\r\n" +
+					"Content-length: " + image.length + "\r\n" 
+				);
+				sock.write("\r\n");
+				sock.write(image,
+					err => {
+						transmitting = false;
+						if (err) {
+							camera.removeListener('jpeg', mjpegStreamer);
+							sock.destroy();
+						}
 					}
-				}
-			);
+				);
+			}
 		});
 	}
 }
