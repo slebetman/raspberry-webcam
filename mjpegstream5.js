@@ -101,14 +101,16 @@ var cam = {
 	}
 }
 
-async function restartStream () {
+function restartStream () {
 	cam.closeAll();
 	sockIds = Object.keys(socks);
 
-	for (let i=0; i<sockIds.length; i++) {
-		let camera = await cam.open();
-		stream(socks[sockIds[i]], camera);
-	}
+	setTimeout(async function {
+		for (let i=0; i<sockIds.length; i++) {
+			let camera = await cam.open();
+			stream(socks[sockIds[i]], camera);
+		}
+	}, 1000);
 }
 
 function stream (sock,camera) {
