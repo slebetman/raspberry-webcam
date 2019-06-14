@@ -6,14 +6,19 @@ const spawn = require('child_process').spawn;
 
 var BOUNDARY_STRING = '1234567890.a.very.unlikely.string.to.find.in.a.jpeg.file.0987654321';
 
-let settings = {
-	width: '320',
-	height: '240',
-	bitrate: '1000000',
-	framerate: '20',
-	brightness: '60',
-	contrast: '25'
+function defaultSettings () {
+ return {
+		width: '320',
+		height: '240',
+		bitrate: '1500000',
+		framerate: '20',
+		brightness: '60',
+		contrast: '25',
+		rotation: '180'
+	}
 }
+
+let settings = defaultSettings();
 
 function exitHandler () {
 	server.close();
@@ -44,7 +49,7 @@ var cam = {
 				this.raspivid = spawn('raspivid',[
 					'--width',settings.width,
 					'--height',settings.height,
-					'--rotation','180',
+					'--rotation',settings.rotation,
 					'--bitrate',settings.bitrate,
 					'--framerate',settings.framerate,
 					'--codec','MJPEG',
@@ -86,34 +91,52 @@ var cam = {
 				ok('not running');
 			}
 		});
+	},
+	closeAll: function () {
+		this.camInstance.removeAllListeners('jpeg');
+		this.openCount = 0;
+		this.raspivid.stdout.destroy();
+		this.raspivid = null;
+		this.camInstance = null;
+	}
+}
+
+async function restartStream () {
+	cam.closeAll();
+	sockIds = Object.keys(socks);
+
+	for (let i=0; i<sockIds.length; i++) {
+		let camera = await cam.open();
+		stream(socks[sockIds[i]], camera);
 	}
 }
 
 function stream (sock,camera) {
 	let transmitting = false;
-	if (sock.isOpen) {
-		camera.on('jpeg', function mjpegStreamer (image) {
-			if (!transmitting) {
-				transmitting = true;
-				sock.write(
-					'--' + BOUNDARY_STRING + "\r\n" +
-					"Content-type: image/jpg\r\n" +
-					"Content-length: " + image.length + "\r\n" 
-				);
-				sock.write("\r\n");
-				sock.write(image,
-					err => {
-						transmitting = false;
-						if (err) {
-							camera.removeListener('jpeg', mjpegStreamer);
-							sock.destroy();
-						}
+	camera.on('jpeg', function mjpegStreamer (image) {
+		if (!transmitting) {
+			transmitting = true;
+			sock.write(
+				'--' + BOUNDARY_STRING + "\r\n" +
+				"Content-type: image/jpg\r\n" +
+				"Content-length: " + image.length + "\r\n" 
+			);
+			sock.write("\r\n");
+			sock.write(image,
+				err => {
+					transmitting = false;
+					if (err) {
+						camera.removeListener('jpeg', mjpegStreamer);
+						sock.destroy();
 					}
-				);
-			}
-		});
-	}
+				}
+			);
+		}
+	});
 }
+
+let nextId = 0;
+let socks = {};
 
 var server = net.createServer(sock => {
 	var client = sock.remoteAddress;
@@ -132,12 +155,15 @@ var server = net.createServer(sock => {
 	sock.write("\r\n");
 
 	sock.isOpen = true;	
+	sock.id = nextId++;
+	socks[sock.id] = sock;
 	cam.open().then(camera => stream(sock,camera));
 	
 	sock.on('error', () => {});
 	
 	sock.on('close', () => {
 		sock.isOpen = false;
+		delete socks[sock.id];
 		cam.close().then((x)=>console.log('raspivid ' + x)).catch(console.error);
 		console.log(client + ' disconnected');
 	});
@@ -161,6 +187,11 @@ var configServer = net.createServer(sock => {
 				for (let n in json.settings) {
 					settings[n] = json.settings[n]; // update settings
 				}
+				restartStream();
+				break;
+			case 'defaults':
+				settings = defaultSettings();
+				restartStream();
 				break;
 		}
 	});
